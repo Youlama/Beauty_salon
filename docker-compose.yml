@@ -1,7 +1,6 @@
 version: "3.9"
 
 services:
-  # ── Инфраструктура ──────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: belle_postgres
@@ -38,7 +37,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Микросервисы ─────────────────────────────────────────────────
   auth-service:
     build: ./auth-service
     container_name: belle_auth
@@ -97,7 +95,6 @@ services:
     container_name: belle_frontend
     restart: unless-stopped
 
-  # ── API Gateway ──────────────────────────────────────────────────
   nginx:
     image: nginx:alpine
     container_name: belle_nginx

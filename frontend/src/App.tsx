@@ -2,12 +2,10 @@ import { useState, useEffect, createContext, useContext } from 'react'
 import { authApi } from './api'
 import type { User } from './types'
 
-// ─── Auth context ────────────────────────────────────────────────
 interface AuthCtx { user: User | null; token: string | null; login(t: string, u: User): void; logout(): void }
 const AuthContext = createContext<AuthCtx>({ user: null, token: null, login: () => {}, logout: () => {} })
 export const useAuth = () => useContext(AuthContext)
 
-// ─── Pages (lazy imports avoided for simplicity) ─────────────────
 import LoginPage     from './pages/LoginPage'
 import HomePage      from './pages/HomePage'
 import ServicesPage  from './pages/ServicesPage'
@@ -18,13 +16,11 @@ import ProfilePage   from './pages/ProfilePage'
 import AdminPage     from './pages/AdminPage'
 import MasterPage    from './pages/MasterPage'
 
-// ─── Styles ──────────────────────────────────────────────────────
 const G = {
   gold: '#D4A853', darkBg: '#0f0f0f', cardBg: '#161616',
   border: '#1e1e1e', textMuted: '#666', textSub: '#aaa',
 }
 
-// ─── Nav ─────────────────────────────────────────────────────────
 function Nav({ page, setPage }: { page: string; setPage(p: string): void }) {
   const { user, logout } = useAuth()
   const links = [
@@ -78,7 +74,6 @@ function Nav({ page, setPage }: { page: string; setPage(p: string): void }) {
   )
 }
 
-// ─── App ──────────────────────────────────────────────────────────
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
   const [token, setToken] = useState<string | null>(null)

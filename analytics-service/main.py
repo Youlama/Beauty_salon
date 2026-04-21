@@ -1,15 +1,3 @@
-"""
-ANALYTICS-SERVICE — Сервис аналитики
-Порт: 8003 | Маршрут через Gateway: /api/analytics/
-
-Реализовано:
-  - Выручка по периодам
-  - Загрузка мастеров
-  - Популярность услуг
-  - Статистика отзывов
-  - Прогноз загрузки (базовая модель — скользящее среднее)
-  - Экспорт отчётов PDF/XLSX (заглушка — в разработке, возвращает структуру данных)
-"""
 import os
 from typing import Optional
 from datetime import date, timedelta
@@ -53,7 +41,6 @@ async def shutdown(): await database.disconnect()
 async def health():
     return {"status": "ok", "service": "analytics"}
 
-# ── Выручка по периоду ────────────────────────────────────────────
 @app.get("/revenue")
 async def revenue(
     date_from: str = Query(default=str(date.today() - timedelta(days=30))),
@@ -74,7 +61,6 @@ async def revenue(
         "by_day": [{"date": r["date"], "revenue": float(r["revenue"] or 0), "appointments": r["appointments"]} for r in rows]
     }
 
-# ── Загрузка мастеров ─────────────────────────────────────────────
 @app.get("/masters-load")
 async def masters_load(
     date_from: str = Query(default=str(date.today() - timedelta(days=30))),
@@ -94,7 +80,7 @@ async def masters_load(
     )
     return [dict(r) for r in rows]
 
-# ── Популярность услуг ────────────────────────────────────────────
+
 @app.get("/popular-services")
 async def popular_services(user=Depends(require_admin)):
     rows = await database.fetch_all(
@@ -105,7 +91,6 @@ async def popular_services(user=Depends(require_admin)):
     )
     return [dict(r) for r in rows]
 
-# ── Статистика отзывов ────────────────────────────────────────────
 @app.get("/reviews-stats")
 async def reviews_stats(user=Depends(require_admin)):
     total = await database.fetch_one("SELECT COUNT(*) AS n, AVG(rating) AS avg FROM reviews WHERE status='approved'")
@@ -122,7 +107,6 @@ async def reviews_stats(user=Depends(require_admin)):
         "by_sentiment": [dict(r) for r in sentiment]
     }
 
-# ── Прогноз загрузки (скользящее среднее) ────────────────────────
 @app.get("/forecast")
 async def forecast(days_ahead: int = 14, user=Depends(require_admin)):
     """
@@ -161,7 +145,6 @@ async def forecast(days_ahead: int = 14, user=Depends(require_admin)):
 
     return result
 
-# ── Экспорт (заглушка — модуль в разработке) ─────────────────────
 @app.get("/export")
 async def export_report(format: str = "xlsx", user=Depends(require_admin)):
     """

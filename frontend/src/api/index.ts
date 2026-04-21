@@ -1,4 +1,4 @@
-const BASE = ''   // через Nginx: /api/auth/, /api/core/, /api/ml/, /api/analytics/
+const BASE = ''
 
 function token() {
   return localStorage.getItem('belle_token')
