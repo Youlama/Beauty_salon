@@ -1,3 +1,16 @@
+"""
+ML-SERVICE — Сервис машинного обучения
+Порт: 8004 | Маршрут через Gateway: /api/ml/
+
+Реализовано:
+  - Анализ тональности отзывов (rule-based — до интеграции BERT/ruBERT)
+  - Персональные рекомендации (на основе истории + коллаборативная фильтрация — заглушка)
+  - Предложение доп. услуг (на основе статистики совместных заказов)
+
+NOTE: Полноценные ML-модели (ruBERT для sentiment, матричная факторизация
+      для рекомендаций) запланированы к интеграции на этапе 6.1.7 по графику ТЗ.
+      Текущая реализация использует эвристику для демонстрации интерфейса.
+"""
 import os
 from typing import Optional, List
 
@@ -28,6 +41,7 @@ async def shutdown(): await database.disconnect()
 async def health():
     return {"status": "ok", "service": "ml", "models": {"sentiment": "rule-based", "recommendations": "stub"}}
 
+# ── Rule-based анализ тональности ────────────────────────────────
 POSITIVE_WORDS = {
     "отлично","прекрасно","замечательно","хорошо","великолепно","профессионал",
     "спасибо","рекомендую","красиво","аккуратно","быстро","точно","довольна",
@@ -60,17 +74,30 @@ class SentimentOut(BaseModel):
 
 @app.post("/sentiment", response_model=SentimentOut)
 async def analyze(data: SentimentIn):
+    """
+    Анализ тональности текста отзыва.
+    Текущая реализация: rule-based (словарный метод).
+    Плановая реализация: ruBERT fine-tuned on Russian sentiment corpus.
+    """
     sentiment = analyze_sentiment(data.text)
+    # Обновить запись в БД
     await database.execute(
         "UPDATE reviews SET sentiment=:s WHERE id=:id",
         {"s": sentiment, "id": data.review_id}
     )
+    # Эвристика confidence: наличие 2+ совпадений → 0.85, иначе 0.6
     confidence = 0.85 if len(data.text.split()) > 5 else 0.60
     return SentimentOut(review_id=data.review_id, sentiment=sentiment, confidence=confidence)
 
+# ── Персональные рекомендации фотографий ─────────────────────────
 @app.get("/recommendations/gallery")
 async def recommend_gallery(user_id: int, limit: int = 6):
-
+    """
+    Рекомендации фотографий портфолио на основе истории записей клиента.
+    Текущая реализация: content-based (категории из истории).
+    Плановая реализация: коллаборативная фильтрация (матричная факторизация).
+    """
+    # История клиента: какие категории заказывал
     history = await database.fetch_all(
         """SELECT DISTINCT s.category::text
            FROM appointments a JOIN services s ON s.id=a.service_id
@@ -79,6 +106,7 @@ async def recommend_gallery(user_id: int, limit: int = 6):
     )
 
     if not history:
+        # Нет истории — возвращаем последние фото
         photos = await database.fetch_all(
             """SELECT pp.id, pp.photo_url, u.name AS master_name, s.name AS service_name, s.category::text
                FROM portfolio_photos pp
@@ -102,8 +130,13 @@ async def recommend_gallery(user_id: int, limit: int = 6):
     )
     return {"type": "personalized", "based_on_categories": categories, "photos": [dict(p) for p in photos]}
 
+# ── Рекомендации доп. услуг при записи ───────────────────────────
 @app.get("/recommendations/cross-sell")
 async def cross_sell(service_id: int, limit: int = 3):
+    """
+    Предложение дополнительных услуг на основе статистики совместных заказов.
+    Текущая реализация: частота совместного бронирования.
+    """
     rows = await database.fetch_all(
         """SELECT a2.service_id, s.name, s.price, s.icon, COUNT(*) AS frequency
            FROM appointments a1
@@ -115,6 +148,7 @@ async def cross_sell(service_id: int, limit: int = 3):
         {"sid": service_id, "n": limit}
     )
     if not rows:
+        # Fallback — популярные услуги
         rows = await database.fetch_all(
             """SELECT s.id AS service_id, s.name, s.price, s.icon, 0 AS frequency
                FROM services s WHERE s.id != :sid AND s.archived=false

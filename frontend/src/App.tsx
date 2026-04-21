@@ -18,12 +18,13 @@ import ProfilePage   from './pages/ProfilePage'
 import AdminPage     from './pages/AdminPage'
 import MasterPage    from './pages/MasterPage'
 
-
+// ─── Styles ──────────────────────────────────────────────────────
 const G = {
   gold: '#D4A853', darkBg: '#0f0f0f', cardBg: '#161616',
   border: '#1e1e1e', textMuted: '#666', textSub: '#aaa',
 }
 
+// ─── Nav ─────────────────────────────────────────────────────────
 function Nav({ page, setPage }: { page: string; setPage(p: string): void }) {
   const { user, logout } = useAuth()
   const links = [
@@ -77,6 +78,7 @@ function Nav({ page, setPage }: { page: string; setPage(p: string): void }) {
   )
 }
 
+// ─── App ──────────────────────────────────────────────────────────
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
   const [token, setToken] = useState<string | null>(null)

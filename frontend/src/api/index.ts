@@ -1,4 +1,4 @@
-const BASE = ''
+const BASE = ''   // через Nginx: /api/auth/, /api/core/, /api/ml/, /api/analytics/
 
 function token() {
   return localStorage.getItem('belle_token')
@@ -18,12 +18,14 @@ async function req(url: string, opts: RequestInit = {}) {
   return data
 }
 
+// Auth
 export const authApi = {
   register: (b: object) => req('/api/auth/register', { method: 'POST', body: JSON.stringify(b) }),
   login:    (b: object) => req('/api/auth/login',    { method: 'POST', body: JSON.stringify(b) }),
   me:       ()          => req('/api/auth/me'),
 }
 
+// Core
 export const coreApi = {
   salonInfo:    ()             => req('/api/core/salon-info'),
   services:     (cat?: string) => req(`/api/core/services${cat ? `?category=${cat}` : ''}`),
@@ -47,6 +49,7 @@ export const coreApi = {
   moderateReview:(id: number, b: object) => req(`/api/core/reviews/${id}/moderate`, { method: 'PATCH', body: JSON.stringify(b) }),
 }
 
+// Analytics
 export const analyticsApi = {
   revenue:      (from: string, to: string) => req(`/api/analytics/revenue?date_from=${from}&date_to=${to}`),
   mastersLoad:  (from: string, to: string) => req(`/api/analytics/masters-load?date_from=${from}&date_to=${to}`),
@@ -56,6 +59,7 @@ export const analyticsApi = {
   export:       (fmt: string)  => req(`/api/analytics/export?format=${fmt}`),
 }
 
+// ML
 export const mlApi = {
   sentiment:       (b: object) => req('/api/ml/sentiment', { method: 'POST', body: JSON.stringify(b) }),
   galleryRecs:     (uid: number) => req(`/api/ml/recommendations/gallery?user_id=${uid}`),
