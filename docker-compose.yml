@@ -1,0 +1,115 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: belle_postgres
+    environment:
+      POSTGRES_USER: belle
+      POSTGRES_PASSWORD: belle_secret
+      POSTGRES_DB: belle_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U belle -d belle_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: belle_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: belle_minio
+      MINIO_ROOT_PASSWORD: belle_minio_secret
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  auth-service:
+    build: ./auth-service
+    container_name: belle_auth
+    environment:
+      DATABASE_URL: postgresql://belle:belle_secret@postgres:5432/belle_db
+      SECRET_KEY: super-secret-key-change-in-prod
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 1440
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  core-service:
+    build: ./core-service
+    container_name: belle_core
+    environment:
+      DATABASE_URL: postgresql://belle:belle_secret@postgres:5432/belle_db
+      SECRET_KEY: super-secret-key-change-in-prod
+      ALGORITHM: HS256
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: belle_minio
+      MINIO_SECRET_KEY: belle_minio_secret
+      MINIO_BUCKET: belle-photos
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  analytics-service:
+    build: ./analytics-service
+    container_name: belle_analytics
+    environment:
+      DATABASE_URL: postgresql://belle:belle_secret@postgres:5432/belle_db
+      SECRET_KEY: super-secret-key-change-in-prod
+      ALGORITHM: HS256
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ml-service:
+    build: ./ml-service
+    container_name: belle_ml
+    environment:
+      DATABASE_URL: postgresql://belle:belle_secret@postgres:5432/belle_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: belle_frontend
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: belle_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - auth-service
+      - core-service
+      - analytics-service
+      - ml-service
+      - frontend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  minio_data:
