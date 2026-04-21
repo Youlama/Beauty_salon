@@ -1,7 +1,3 @@
-"""
-AUTH-SERVICE — Микросервис аутентификации и авторизации
-Порт: 8001 | Маршрут через Gateway: /api/auth/
-"""
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -15,7 +11,6 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
 
-# ── Конфигурация ──────────────────────────────────────────────────
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://belle:belle_secret@localhost:5432/belle_db")
 SECRET_KEY   = os.getenv("SECRET_KEY", "dev-secret")
 ALGORITHM    = os.getenv("ALGORITHM", "HS256")
@@ -38,7 +33,6 @@ users_table = sqlalchemy.Table(
 pwd_ctx      = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
-# ── Pydantic схемы ────────────────────────────────────────────────
 class RegisterIn(BaseModel):
     name:     str
     email:    EmailStr
@@ -62,7 +56,6 @@ class TokenOut(BaseModel):
     token_type:   str = "bearer"
     user:         UserOut
 
-# ── Утилиты ──────────────────────────────────────────────────────
 def make_token(user_id: int, role: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=TOKEN_EXPIRE)
     return jwt.encode({"sub": str(user_id), "role": role, "exp": expire}, SECRET_KEY, ALGORITHM)
@@ -80,7 +73,6 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
         raise exc
     return dict(user)
 
-# ── FastAPI ───────────────────────────────────────────────────────
 app = FastAPI(title="Auth Service", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -96,7 +88,6 @@ async def shutdown():
 async def health():
     return {"status": "ok", "service": "auth"}
 
-# ── Регистрация ───────────────────────────────────────────────────
 @app.post("/register", response_model=TokenOut, status_code=201)
 async def register(data: RegisterIn):
     existing = await database.fetch_one(
@@ -120,7 +111,6 @@ async def register(data: RegisterIn):
     user = await database.fetch_one(users_table.select().where(users_table.c.id == user_id))
     return TokenOut(access_token=make_token(user["id"], user["role"]), user=UserOut(**dict(user)))
 
-# ── Вход ──────────────────────────────────────────────────────────
 @app.post("/login", response_model=TokenOut)
 async def login(data: LoginIn):
     user = await database.fetch_one(
@@ -130,12 +120,10 @@ async def login(data: LoginIn):
         raise HTTPException(401, "Неверный email или пароль")
     return TokenOut(access_token=make_token(user["id"], user["role"]), user=UserOut(**dict(user)))
 
-# ── Текущий пользователь ──────────────────────────────────────────
 @app.get("/me", response_model=UserOut)
 async def me(current: dict = Depends(get_current_user)):
     return UserOut(**current)
 
-# ── Верификация токена (для других сервисов) ──────────────────────
 @app.get("/verify")
 async def verify(current: dict = Depends(get_current_user)):
     """Используется другими сервисами для проверки JWT."""

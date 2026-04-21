@@ -1,14 +1,3 @@
-"""
-CORE-SERVICE — Основной бизнес-сервис
-Порт: 8002 | Маршрут через Gateway: /api/core/
-
-Отвечает за:
-  - Каталог услуг (CRUD, архивация)
-  - Мастера (карточки, расписание, портфолио)
-  - Записи (бронирование, отмена, перенос)
-  - Отзывы (создание, модерация)
-  - Расписание мастеров
-"""
 import os
 from datetime import date, time
 from typing import Optional, List
@@ -24,7 +13,6 @@ from minio.error import S3Error
 from pydantic import BaseModel
 import io, uuid
 
-# ── Конфигурация ──────────────────────────────────────────────────
 DATABASE_URL  = os.getenv("DATABASE_URL", "postgresql://belle:belle_secret@localhost:5432/belle_db")
 SECRET_KEY    = os.getenv("SECRET_KEY", "dev-secret")
 ALGORITHM     = os.getenv("ALGORITHM", "HS256")
@@ -39,9 +27,6 @@ oauth2    = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 minio_client = Minio(MINIO_EP, access_key=MINIO_AK, secret_key=MINIO_SK, secure=False)
 
-# ── SQLAlchemy таблицы (только читаем через raw SQL для гибкости) ─
-
-# ── Auth helper ───────────────────────────────────────────────────
 async def get_current_user(token: Optional[str] = Depends(oauth2)):
     if not token:
         return None
@@ -66,7 +51,6 @@ async def require_master_or_admin(user=Depends(require_auth)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Только для мастера или администратора")
     return user
 
-# ── Pydantic схемы ────────────────────────────────────────────────
 class ServiceCreate(BaseModel):
     name:     str
     category: str
@@ -104,14 +88,12 @@ class ScheduleSet(BaseModel):
     start_time:  str
     end_time:    str
 
-# ── FastAPI ───────────────────────────────────────────────────────
 app = FastAPI(title="Core Service", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 @app.on_event("startup")
 async def startup():
     await database.connect()
-    # Создать bucket MinIO если не существует
     try:
         if not minio_client.bucket_exists(MINIO_BUCKET):
             minio_client.make_bucket(MINIO_BUCKET)
@@ -126,9 +108,6 @@ async def shutdown():
 async def health():
     return {"status": "ok", "service": "core"}
 
-# ════════════════════════════════════════════════════════════════════
-# УСЛУГИ
-# ════════════════════════════════════════════════════════════════════
 @app.get("/services")
 async def list_services(category: Optional[str] = None, include_archived: bool = False):
     q = "SELECT * FROM services WHERE 1=1"
@@ -175,9 +154,6 @@ async def update_service(service_id: int, data: ServiceUpdate, user=Depends(requ
     )
     return {"ok": True}
 
-# ════════════════════════════════════════════════════════════════════
-# МАСТЕРА
-# ════════════════════════════════════════════════════════════════════
 @app.get("/masters")
 async def list_masters():
     rows = await database.fetch_all(
@@ -238,9 +214,6 @@ async def get_master(master_id: int):
         "schedule":  [dict(sc) for sc in schedule],
     }
 
-# ════════════════════════════════════════════════════════════════════
-# РАСПИСАНИЕ
-# ════════════════════════════════════════════════════════════════════
 @app.get("/schedule")
 async def get_schedule(date: str):
     """Расписание всех мастеров на указанную дату."""
@@ -273,16 +246,12 @@ async def set_master_schedule(master_id: int, data: ScheduleSet, user=Depends(re
     )
     return {"ok": True}
 
-# ════════════════════════════════════════════════════════════════════
-# ПОРТФОЛИО
-# ════════════════════════════════════════════════════════════════════
 @app.post("/portfolio/upload")
 async def upload_portfolio(
     service_id: int,
     file: UploadFile = File(...),
     user=Depends(require_master_or_admin)
 ):
-    # Получаем master_id по user_id
     master = await database.fetch_one(
         "SELECT id FROM masters WHERE user_id=:uid", {"uid": user["user_id"]}
     )
@@ -328,9 +297,6 @@ async def get_gallery(master_id: Optional[int] = None, service_id: Optional[int]
     rows = await database.fetch_all(q, params)
     return [dict(r) for r in rows]
 
-# ════════════════════════════════════════════════════════════════════
-# ЗАПИСИ
-# ════════════════════════════════════════════════════════════════════
 @app.get("/appointments")
 async def list_appointments(user=Depends(require_auth)):
     if user["role"] == "client":
@@ -379,7 +345,6 @@ async def create_appointment(data: AppointmentCreate, user=Depends(require_auth)
     if conflict:
         raise HTTPException(409, "Это время у мастера уже занято")
 
-    # Цена услуги
     price_row = await database.fetch_one(
         """SELECT COALESCE(ms.price_override, s.price) AS price
            FROM services s
@@ -430,9 +395,6 @@ async def reschedule(appt_id: int, data: AppointmentReschedule, user=Depends(req
     )
     return {"ok": True}
 
-# ════════════════════════════════════════════════════════════════════
-# ОТЗЫВЫ
-# ════════════════════════════════════════════════════════════════════
 @app.get("/reviews")
 async def list_reviews(master_id: Optional[int] = None, status_filter: Optional[str] = None):
     q = """SELECT rv.*, u.name AS author_name, s.name AS service_name, mu.name AS master_name
@@ -455,14 +417,12 @@ async def list_reviews(master_id: Optional[int] = None, status_filter: Optional[
 
 @app.post("/reviews", status_code=201)
 async def create_review(data: ReviewCreate, user=Depends(require_auth)):
-    # Проверяем что запись принадлежит клиенту и завершена
     appt = await database.fetch_one(
         "SELECT * FROM appointments WHERE id=:id AND client_id=:cid AND status='completed'",
         {"id": data.appointment_id, "cid": user["user_id"]}
     )
     if not appt:
         raise HTTPException(400, "Запись не найдена или не завершена")
-    # Проверяем нет ли уже отзыва
     existing = await database.fetch_one(
         "SELECT id FROM reviews WHERE appointment_id=:aid", {"aid": data.appointment_id}
     )
@@ -487,7 +447,6 @@ async def moderate_review(review_id: int, data: ReviewModerate, user=Depends(req
         {"s": data.status, "r": data.admin_reply, "id": review_id}
     )
     if data.status == "approved":
-        # Обновить рейтинг мастера
         review = await database.fetch_one("SELECT master_id FROM reviews WHERE id=:id", {"id": review_id})
         if review:
             avg = await database.fetch_one(
@@ -517,9 +476,6 @@ async def pending_reviews(user=Depends(require_admin)):
     )
     return [dict(r) for r in rows]
 
-# ════════════════════════════════════════════════════════════════════
-# ИНФОРМАЦИЯ О САЛОНЕ
-# ════════════════════════════════════════════════════════════════════
 @app.get("/salon-info")
 async def salon_info():
     return {
